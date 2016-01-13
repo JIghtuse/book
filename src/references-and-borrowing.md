@@ -1,407 +1,315 @@
 # References and Borrowing
 
-
-## Slices
-
-We saw how to use indexing to get a single element out of an array.
-But we can also use indexing to get a reference to multiple elements:
+At the end of the last section, we had some example Rust that wasn’t very
+good. Here it is again:
 
 ```rust
 fn main() {
-    let a = [1, 2, 3, 4, 5];
+    let s1 = String::from("hello");
 
-    let s = &a[0..2];
+    let (s2, len) = calculate_length(s1);
 
-    println!("The value of s is: {:?}", s);
+    println!("The length of '{}' is {}.", s2, len);
+}
+
+fn calculate_length(s: String) -> (String, usize) {
+    let length = s.len(); // len() returns the length of a String.
+
+    (s, length)
 }
 ```
 
-Let’s try running it:
+The issue here is that we have to return the `String` back to the calling
+function so that it could still use it.
 
-```bash
-$ cargo run
-   Compiling functions v0.1.0 (file:///projects/functions)
-     Running `target/debug/functions`
-The value of s is: [1, 2]
-```
-
-
-This guide is two of three presenting Rust’s ownership system. This is one of
-Rust’s most unique and compelling features, with which Rust developers should
-become quite acquainted. Ownership is how Rust achieves its largest goal,
-memory safety. There are a few distinct concepts, each with its own
-chapter:
-
-* [ownership][ownership], the key concept
-* borrowing, which you’re reading now
-* [lifetimes][lifetimes], an advanced concept of borrowing
-
-These three chapters are related, and in order. You’ll need all three to fully
-understand the ownership system.
-
-[ownership]: ownership.html
-[lifetimes]: lifetimes.html
-
-# Meta
-
-Before we get to the details, two important notes about the ownership system.
-
-Rust has a focus on safety and speed. It accomplishes these goals through many
-‘zero-cost abstractions’, which means that in Rust, abstractions cost as little
-as possible in order to make them work. The ownership system is a prime example
-of a zero cost abstraction. All of the analysis we’ll talk about in this guide
-is _done at compile time_. You do not pay any run-time cost for any of these
-features.
-
-However, this system does have a certain cost: learning curve. Many new users
-to Rust experience something we like to call ‘fighting with the borrow
-checker’, where the Rust compiler refuses to compile a program that the author
-thinks is valid. This often happens because the programmer’s mental model of
-how ownership should work doesn’t match the actual rules that Rust implements.
-You probably will experience similar things at first. There is good news,
-however: more experienced Rust developers report that once they work with the
-rules of the ownership system for a period of time, they fight the borrow
-checker less and less.
-
-With that in mind, let’s learn about borrowing.
-
-# Borrowing
-
-At the end of the [ownership][ownership] section, we had a nasty function that looked
-like this:
+There is a better way. It looks like this:
 
 ```rust
-fn foo(v1: Vec<i32>, v2: Vec<i32>) -> (Vec<i32>, Vec<i32>, i32) {
-    // do stuff with v1 and v2
+fn main() {
+    let s1 = String::from("hello");
 
-    // hand back ownership, and the result of our function
-    (v1, v2, 42)
+    let len = calculate_length(&s1);
+
+    println!("The length of '{}' is {}.", s1, len);
 }
 
-let v1 = vec![1, 2, 3];
-let v2 = vec![1, 2, 3];
+fn calculate_length(s: &String) -> usize {
+    let length = s.len();
 
-let (v1, v2, answer) = foo(v1, v2);
+    length
+}
 ```
 
-This is not idiomatic Rust, however, as it doesn’t take advantage of borrowing. Here’s
-the first step:
+First, you’ll notice all of the tuple stuff is gone. Next, that we pass `&s1`
+into `calculate_lengths()`. And in its definition, we take `&String` rather
+than `String`.
+
+These `&s` are called ‘references’, and they allow you to refer to some value
+without taking ownership of it. Here’s a diagram:
+
+DIAGRAM GOES HERE of a &String pointing at a String, with (ptr, len, capacity)
+
+Let’s take a step back from that example and examine references on their own,
+without all that function stuff:
 
 ```rust
-fn foo(v1: &Vec<i32>, v2: &Vec<i32>) -> i32 {
-    // do stuff with v1 and v2
-
-    // return the answer
-    42
-}
-
-let v1 = vec![1, 2, 3];
-let v2 = vec![1, 2, 3];
-
-let answer = foo(&v1, &v2);
-
-// we can use v1 and v2 here!
-```
-
-Instead of taking `Vec<i32>`s as our arguments, we take a reference:
-`&Vec<i32>`. And instead of passing `v1` and `v2` directly, we pass `&v1` and
-`&v2`. We call the `&T` type a ‘reference’, and rather than owning the resource,
-it borrows ownership. A binding that borrows something does not deallocate the
-resource when it goes out of scope. This means that after the call to `foo()`,
-we can use our original bindings again.
-
-References are immutable, just like bindings. This means that inside of `foo()`,
-the vectors can’t be changed at all:
-
-```rust,ignore
-fn foo(v: &Vec<i32>) {
-     v.push(5);
-}
-
-let v = vec![];
-
-foo(&v);
-```
-
-errors with:
-
-```text
-error: cannot borrow immutable borrowed content `*v` as mutable
-v.push(5);
-^
-```
-
-Pushing a value mutates the vector, and so we aren’t allowed to do it.
-
-# &mut references
-
-There’s a second kind of reference: `&mut T`. A ‘mutable reference’ allows you
-to mutate the resource you’re borrowing. For example:
-
-```rust
-let mut x = 5;
 {
-    let y = &mut x;
-    *y += 1;
+   let s = String::from("hello");
+
+   let r = &s;
+
+   // do stuff
 }
-println!("{}", x);
 ```
 
-This will print `6`. We make `y` a mutable reference to `x`, then add one to
-the thing `y` points at. You’ll notice that `x` had to be marked `mut` as well.
-If it wasn’t, we couldn’t take a mutable borrow to an immutable value.
+The `&` syntax lets us create a reference from the binding that follows it.
+This reference _refers_ to the value of some other binding, but does not own
+it. Because it does not own it, the value it points to will not be dropped
+when the reference goes out of scope.
 
-You'll also notice we added an asterisk (`*`) in front of `y`, making it `*y`,
-this is because `y` is an `&mut` reference. You'll also need to use them for
-accessing the contents of a reference as well.
-
-Otherwise, `&mut` references are just like references. There _is_ a large
-difference between the two, and how they interact, though. You can tell
-something is fishy in the above example, because we need that extra scope, with
-the `{` and `}`. If we remove them, we get an error:
-
-```text
-error: cannot borrow `x` as immutable because it is also borrowed as mutable
-    println!("{}", x);
-                   ^
-note: previous borrow of `x` occurs here; the mutable borrow prevents
-subsequent moves, borrows, or modification of `x` until the borrow ends
-        let y = &mut x;
-                     ^
-note: previous borrow ends here
-fn main() {
-
-}
-^
-```
-
-As it turns out, there are rules.
-
-# The Rules
-
-Here’s the rules about borrowing in Rust:
-
-First, any borrow must last for a scope no greater than that of the owner.
-Second, you may have one or the other of these two kinds of borrows, but not
-both at the same time:
-
-* one or more references (`&T`) to a resource,
-* exactly one mutable reference (`&mut T`).
-
-
-You may notice that this is very similar, though not exactly the same as,
-to the definition of a data race:
-
-> There is a ‘data race’ when two or more pointers access the same memory
-> location at the same time, where at least one of them is writing, and the
-> operations are not synchronized.
-
-With references, you may have as many as you’d like, since none of them are
-writing. However, as we can only have one `&mut` at a time, it is impossible to
-have a data race. This is how Rust prevents data races at compile time: we’ll
-get errors if we break the rules.
-
-With this in mind, let’s consider our example again.
-
-## Thinking in scopes
-
-Here’s the code:
-
-```rust,ignore
-let mut x = 5;
-let y = &mut x;
-
-*y += 1;
-
-println!("{}", x);
-```
-
-This code gives us this error:
-
-```text
-error: cannot borrow `x` as immutable because it is also borrowed as mutable
-    println!("{}", x);
-                   ^
-```
-
-This is because we’ve violated the rules: we have a `&mut T` pointing to `x`,
-and so we aren’t allowed to create any `&T`s. One or the other. The note
-hints at how to think about this problem:
-
-```text
-note: previous borrow ends here
-fn main() {
-
-}
-^
-```
-
-In other words, the mutable borrow is held through the rest of our example. What
-we want is for the mutable borrow to end _before_ we try to call `println!` and
-make an immutable borrow. In Rust, borrowing is tied to the scope that the
-borrow is valid for. And our scopes look like this:
-
-```rust,ignore
-let mut x = 5;
-
-let y = &mut x;    // -+ &mut borrow of x starts here
-                   //  |
-*y += 1;           //  |
-                   //  |
-println!("{}", x); // -+ - try to borrow x here
-                   // -+ &mut borrow of x ends here
-```
-
-The scopes conflict: we can’t make an `&x` while `y` is in scope.
-
-So when we add the curly braces:
+Let’s add some explanatory annotations:
 
 ```rust
-let mut x = 5;
-
 {
-    let y = &mut x; // -+ &mut borrow starts here
-    *y += 1;        //  |
-}                   // -+ ... and ends here
+   let s = String::from("hello");  // s comes into scope here.
 
-println!("{}", x);  // <- try to borrow x here
+   let r = &s;                     // r comes into scope here, and is a
+                                   // reference to s.
+
+   // do stuff
+
+} // Here, r goes out of scope. But since it does not have ownership of what it
+  // refers to, nothing happens.
+  //
+  // Next, s goes out of scope, and is dropped. Its memory is freed.
 ```
 
-There’s no problem. Our mutable borrow goes out of scope before we create an
-immutable one. But scope is the key to seeing how long a borrow lasts for.
+It’s the same process as before, except that because we don’t have ownership,
+we don’t drop what a reference points to when the reference goes out of scope.
+This lets us write functions which take references as arguments instead of the
+values themselves, so that we won’t need to return them to give back ownership.
 
-## Issues borrowing prevents
+There’s another word for what references do, and that’s ‘borrowing’. Just like
+with real life, if I own something, you can borrow it from me. When you’re done,
+you have to give it back.
 
-Why have these restrictive rules? Well, as we noted, these rules prevent data
-races. What kinds of issues do data races cause? Here’s a few.
-
-### Iterator invalidation
-
-One example is ‘iterator invalidation’, which happens when you try to mutate a
-collection that you’re iterating over. Rust’s borrow checker prevents this from
-happening:
-
-```rust
-let mut v = vec![1, 2, 3];
-
-for i in &v {
-    println!("{}", i);
-}
-```
-
-This prints out one through three. As we iterate through the vectors, we’re
-only given references to the elements. And `v` is itself borrowed as immutable,
-which means we can’t change it while we’re iterating:
+Speaking of which, what if you try to modify something you borrow from me? Try
+this code out. Spoiler alert: it doesn’t work:
 
 ```rust,ignore
-let mut v = vec![1, 2, 3];
+fn main() {
+    let s = String::from("hello");
 
-for i in &v {
-    println!("{}", i);
-    v.push(34);
+    change(&s);
+}
+
+fn change(some_string: &String) {
+    some_string.push_str(", world");  // push_str() appends a literal to a String
 }
 ```
 
 Here’s the error:
 
 ```text
-error: cannot borrow `v` as mutable because it is also borrowed as immutable
-    v.push(34);
-    ^
-note: previous borrow of `v` occurs here; the immutable borrow prevents
-subsequent moves or mutable borrows of `v` until the borrow ends
-for i in &v {
-          ^
-note: previous borrow ends here
-for i in &v {
-    println!(“{}”, i);
-    v.push(34);
+8:16 error: cannot borrow immutable borrowed content `*some_string` as mutable
+ some_string.push_str(", world");  // push_str() appends a literal to a String
+ ^~~~~~~~~~~
+```
+
+Just like bindings are immutable by default, so are references. We’re not allowed
+to modify something we have a reference to.
+
+## Mutable references
+
+We can fix this bug! Just a small tweak:
+
+```rust
+fn main() {
+    let mut s = String::from("hello");
+
+    change(&mut s);
+}
+
+fn change(some_string: &mut String) {
+    some_string.push_str(", world");  // push_str() appends a literal to a String
+}
+```
+
+First, we had to change `s` to be `mut`. Then, we had to create a mutable reference
+with `&mut s` and accept a mutable reference with `some_string: &mut String`.
+
+Mutable references have one big restriction, though. This code fails:
+
+```rust,ignore
+let mut s = String::from("hello");
+
+let r1 = &mut s;
+let r2 = &mut s;
+```
+
+Here’s the error:
+
+```text
+5:20 error: cannot borrow `s` as mutable more than once at a time [E0499]
+    let r2 = &mut s;
+                  ^
+4:20 note: previous borrow of `s` occurs here; the mutable borrow prevents
+           subsequent moves, borrows, or modification of `s` until the borrow
+           ends
+    let r1 = &mut s;
+                  ^
+7:2 note: previous borrow ends here
+fn main() {
+
 }
 ^
 ```
 
-We can’t modify `v` because it’s borrowed by the loop.
+The error is what it says on the tin: you cannot borrow something more than
+once at a time in a mutable fashion. This restriction allows for mutation, but
+in a very controlled fashion. It is something that new Rustaceans struggle
+with, because most languages let you mutate whenever you’d like.
 
-### use after free
+As always, we can use `{}`s to create a new scope, allowing for multiple mutable
+references. Just not _simultaneous_ ones:
 
-References must not live longer than the resource they refer to. Rust will
-check the scopes of your references to ensure that this is true.
+```rust
+let mut s = String::from("hello");
 
-If Rust didn’t check this property, we could accidentally use a reference
-which was invalid. For example:
+{
+    let r1 = &mut s;
+
+} // r1 goes out of scope here, so we can make a new reference with no problems.
+
+let r2 = &mut s;
+```
+
+There is a simlar rule for combining the two kinds of references. This code errors:
 
 ```rust,ignore
-let y: &i32;
-{
-    let x = 5;
-    y = &x;
-}
+let mut s = String::from("hello");
 
-println!("{}", y);
+let r1 = &s; // no problem
+let r2 = &s; // no problem
+let r3 = &mut s; // BIG PROBLEM
 ```
 
-We get this error:
+Here’s the error:
 
 ```text
-error: `x` does not live long enough
-    y = &x;
-         ^
-note: reference must be valid for the block suffix following statement 0 at
-2:16...
-let y: &i32;
-{
-    let x = 5;
-    y = &x;
+19: 6:20 error: cannot borrow `s` as mutable because it is also borrowed as
+                immutable [E0502]
+    let r3 = &mut s; // BIG PROBLEM
+                  ^
+15: 4:16 note: previous borrow of `s` occurs here; the immutable borrow
+               prevents subsequent moves or mutable borrows of `s` until the
+               borrow ends
+    let r1 = &s; // no problem
+              ^
+8:2 note: previous borrow ends here
+fn main() {
+
+}
+^
+```
+
+Whew! We _also_ cannot have a mutable reference while we have an immutable one.
+Users of an immutable reference don’t expect the values to suddenly change out
+from under them! Multiple immutable references are okay, however.
+
+## Dangling references
+
+Rust’s references must always be valid. In other words, if we have a reference
+to something, it must not go out of scope before the reference does. Dangling
+references are a pervasive problem in languages that support them.
+
+Let’s try to create a dangling reference:
+
+```rust
+fn main() {
+    let reference_to_nothing = dangle();
 }
 
-note: ...but borrowed value is only valid for the block suffix following
-statement 0 at 4:18
-    let x = 5;
-    y = &x;
+fn dangle() -> &String {
+    let s = String::from("hello");
+
+    &s
 }
 ```
 
-In other words, `y` is only valid for the scope where `x` exists. As soon as
-`x` goes away, it becomes invalid to refer to it. As such, the error says that
-the borrow ‘doesn’t live long enough’ because it’s not valid for the right
-amount of time.
+Here’s the error:
 
-The same problem occurs when the reference is declared _before_ the variable it
-refers to. This is because resources within the same scope are freed in the
-opposite order they were declared:
+```text
+error: missing lifetime specifier [E0106]
+fn dangle() -> &String {
+               ^~~~~~~
+help: this function’s return type contains a borrowed value, but there is no
+      value for it to be borrowed from
+help: consider giving it a ‘static lifetime
+```
+
+This error message refers to a feature we haven’t learned about yet,
+‘lifetimes’. The message does contain the key to why this code is a problem,
+though:
+
+```text
+this function’s return type contains a borrowed value, but there is no value
+for it to be borrowed from
+```
+
+Let’s examine exactly what happens with `dangle()`:
 
 ```rust,ignore
-let y: &i32;
-let x = 5;
-y = &x;
+fn dangle() -> &String { // dangle returns a reference to a String
 
-println!("{}", y);
+    let s = String::from("hello"); // s is a new String
+
+    &s // we return a reference to the String, s
+} // Here, s goes out of scope, and is dropped. Its memory goes away.
+  // Danger!
 ```
 
-We get this error:
+Because `s` is created inside of `dangle()`, when the code of `dangle()` is
+finished, it will be deallocated. But we tried to return a reference to it.
+That means this reference would be pointing to an invalid `String`! That’s
+no good. Rust won’t let us do this.
 
-```text
-error: `x` does not live long enough
-y = &x;
-     ^
-note: reference must be valid for the block suffix following statement 0 at
-2:16...
-    let y: &i32;
-    let x = 5;
-    y = &x;
+The correct code here is to return the `String` directly:
 
-    println!("{}", y);
-}
+```rust
+fn no_dangle() -> String {
+    let s = String::from("hello");
 
-note: ...but borrowed value is only valid for the block suffix following
-statement 1 at 3:14
-    let x = 5;
-    y = &x;
-
-    println!("{}", y);
+    s
 }
 ```
 
-In the above example, `y` is declared before `x`, meaning that `y` lives longer
-than `x`, which is not allowed.
+This works, no problem. Ownership is moved out, nothing is deallocated.
+
+## The Rules of References
+
+Here’s a recap of what we’ve talked about. The Rules of References:
+
+1. At any given time, you may have _either_, but not both of:
+    1. One mutable reference.
+    2. Any number of immutable references .
+2. References must always be valid.
+
+While these rules are not complicated on their own, they can be tricky when
+applied to real code. Let’s work through a number of examples to help build
+our understanding.
+
+## More Examples
+
+COMING SOON
+
+
+
+
+
+
+
+
+
+
 
